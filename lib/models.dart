@@ -58,6 +58,7 @@ class Rider {
   final String? insuranceNumber, insuranceExpiryDate;
   final String? bankName, bankAccountNumber, bankAccountName, bankBranch;
   final String? mobileMoneyNumber, mobileMoneyProvider;
+  final String? profileImage, profileImageUrl;
   final int totalDeliveries, totalEarnings, rating, totalReviews;
   final bool isActive;
   final RiderLocation? latestLocation;
@@ -85,6 +86,8 @@ class Rider {
         bankBranch = j['bank_branch']?.toString(),
         mobileMoneyNumber = j['mobile_money_number']?.toString(),
         mobileMoneyProvider = j['mobile_money_provider']?.toString(),
+        profileImage = j['profile_image']?.toString(),
+        profileImageUrl = j['profile_image_url']?.toString(),
         totalDeliveries = _asInt(j['total_deliveries']),
         totalEarnings = _asInt(j['total_earnings']),
         rating = _asInt(j['rating']),
@@ -99,6 +102,8 @@ class Rider {
     if (parts.isEmpty) return 'R';
     return parts.take(2).map((w) => w[0]).join().toUpperCase();
   }
+
+  bool get hasProfileImage => profileImageUrl != null && profileImageUrl!.isNotEmpty;
 }
 
 class RiderReview {

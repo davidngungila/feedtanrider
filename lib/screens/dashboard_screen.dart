@@ -66,12 +66,7 @@ class DashboardScreen extends StatelessWidget {
     final name = rider?.name ?? 'Rider';
     return Row(
       children: [
-        Container(
-          width: 46,
-          height: 46,
-          decoration: const BoxDecoration(color: FT.goldLight, shape: BoxShape.circle),
-          child: const Icon(Icons.two_wheeler_rounded, color: FT.goldDark, size: 24),
-        ),
+        _avatar(rider),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -119,6 +114,28 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _avatar(Rider? rider) {
+    if (rider == null) {
+      return const CircleAvatar(
+        radius: 23,
+        backgroundColor: FT.goldLight,
+        child: Icon(Icons.two_wheeler_rounded, color: FT.goldDark, size: 24),
+      );
+    }
+    return CircleAvatar(
+      radius: 23,
+      backgroundColor: FT.goldLight,
+      backgroundImage: rider.hasProfileImage ? NetworkImage(rider.profileImageUrl!) : null,
+      onBackgroundImageError: rider.hasProfileImage ? (_, _) {} : null,
+      child: rider.hasProfileImage
+          ? null
+          : Text(
+              rider.initials,
+              style: const TextStyle(color: FT.green800, fontSize: 15, fontWeight: FontWeight.w900),
+            ),
     );
   }
 

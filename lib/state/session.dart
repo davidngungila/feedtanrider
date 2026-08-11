@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -123,6 +124,16 @@ class RiderSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> uploadProfileImage(File image) async {
+    await api.uploadProfileImage(image);
+    await refreshProfile();
+  }
+
+  Future<void> removeProfileImage() async {
+    await api.removeProfileImage();
+    await refreshProfile();
+  }
+
   Future<void> refreshPerformance() async {
     _performanceFailed = false;
     notifyListeners();
@@ -231,11 +242,12 @@ class RiderSession extends ChangeNotifier {
   List<OnlineOrder> get pendingOrders =>
       _myOrders.where((o) => o.needsAcceptance).toList();
 
-  List<OnlineOrder> get activeOrders =>
-      _myOrders.where((o) => o.riderAcceptanceStatus == 'accepted' && !o.isActiveDelivery).toList();
+  List<OnlineOrder> get activeOrders => _myOrders
+      .where((o) => !o.isDelivered && o.status != 'cancelled')
+      .toList();
 
   List<OnlineOrder> get deliveryOrders =>
-      _myOrders.where((o) => o.isActiveDelivery).toList();
+      _myOrders.where((o) => o.isDelivered).toList();
 
   List<OnlineOrder> get completedOrders =>
       _myOrders.where((o) => o.isDelivered || o.status == 'cancelled').toList();

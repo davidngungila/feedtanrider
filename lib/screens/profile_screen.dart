@@ -1,10 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../models.dart';
+import '../services/app_errors.dart';
 import '../state/session.dart';
-import '../theme.dart';
 import '../state/tabs.dart';
+import '../theme.dart';
 import 'edit_screens.dart';
 import 'reviews_screen.dart';
 import 'support_screen.dart';
@@ -86,19 +90,7 @@ class ProfileScreen extends StatelessWidget {
   Widget _header(Rider rider) {
     return Row(
       children: [
-        Container(
-          width: 64,
-          height: 64,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(colors: [FT.green800, FT.green600]),
-            shape: BoxShape.circle,
-          ),
-          child: Text(
-            rider.initials,
-            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
-          ),
-        ),
+        _ProfileAvatar(rider: rider),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
@@ -192,6 +184,194 @@ class ProfileScreen extends StatelessWidget {
             const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: FT.inkSoft),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ProfileAvatar extends StatefulWidget {
+  const _ProfileAvatar({required this.rider});
+
+  final Rider rider;
+
+  @override
+  State<_ProfileAvatar> createState() => _ProfileAvatarState();
+}
+
+class _ProfileAvatarState extends State<_ProfileAvatar> {
+  final ImagePicker _picker = ImagePicker();
+  bool _busy = false;
+
+  Future<void> _pick(ImageSource source) async {
+    final session = context.read<RiderSession>();
+    try {
+      final picked = await _picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      if (await picked.length() > 4 * 1024 * 1024) {
+        if (mounted) showFTError(context, StateError('Image is larger than 4 MB.'));
+        return;
+      }
+      setState(() => _busy = true);
+      await session.uploadProfileImage(File(picked.path));
+      if (mounted) showFTSnack(context, 'Profile image updated', background: FT.green700);
+    } catch (e) {
+      if (mounted) showFTError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove() async {
+    final session = context.read<RiderSession>();
+    final ok = await confirmDialog(
+      context,
+      title: 'Remove photo?',
+      message: 'Your profile image will be removed.',
+      confirmLabel: 'Remove',
+    );
+    if (!ok || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await session.removeProfileImage();
+      if (mounted) showFTSnack(context, 'Profile image removed');
+    } catch (e) {
+      if (mounted) showFTError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _showOptions() async {
+    if (_busy) return;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FTCard(
+              padding: const EdgeInsets.all(4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _option(ctx, Icons.photo_camera_rounded, 'Take a photo', 'camera'),
+                  _option(ctx, Icons.photo_library_rounded, 'Choose from gallery', 'gallery'),
+                  if (widget.rider.hasProfileImage)
+                    _option(ctx, Icons.delete_outline_rounded, 'Remove photo', 'remove',
+                        color: FT.danger),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    switch (action) {
+      case 'camera':
+        await _pick(ImageSource.camera);
+        break;
+      case 'gallery':
+        await _pick(ImageSource.gallery);
+        break;
+      case 'remove':
+        await _remove();
+        break;
+    }
+  }
+
+  Widget _option(BuildContext context, IconData icon, String label, String value,
+      {Color color = FT.ink}) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => Navigator.pop(context, value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        child: Row(
+          children: [
+            Icon(icon, size: 21, color: color == FT.danger ? FT.danger : FT.green700),
+            const SizedBox(width: 14),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 14.5, fontWeight: FontWeight.w600, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rider = widget.rider;
+    return GestureDetector(
+      onTap: _showOptions,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            clipBehavior: Clip.antiAlias,
+            decoration: const BoxDecoration(shape: BoxShape.circle),
+            child: rider.hasProfileImage
+                ? Image.network(
+                    rider.profileImageUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => _fallback(rider),                    loadingBuilder: (context, child, progress) =>
+                        progress == null ? child : _fallback(rider),
+                  )
+                : _fallback(rider),
+          ),
+          if (_busy)
+            const Positioned.fill(
+              child: Center(
+                child: CircularProgressIndicator(strokeWidth: 2, color: FT.green600),
+              ),
+            )
+          else
+            Positioned(
+              right: -3,
+              bottom: -3,
+              child: Container(
+                width: 25,
+                height: 25,
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: FT.green700,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: FT.white, width: 2),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x33000000), blurRadius: 6, offset: Offset(0, 2)),
+                  ],
+                ),
+                child: const Icon(Icons.edit_rounded, size: 14, color: Colors.white),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _fallback(Rider rider) {
+    return Container(
+      width: 64,
+      height: 64,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(colors: [FT.green800, FT.green600]),
+        shape: BoxShape.circle,
+      ),
+      child: Text(
+        rider.initials,
+        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
       ),
     );
   }

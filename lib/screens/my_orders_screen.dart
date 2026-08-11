@@ -140,19 +140,80 @@ class _ActiveTab extends StatelessWidget {
       orders: orders,
       emptyIcon: Icons.directions_bike_rounded,
       emptyTitle: 'No active orders',
-      emptyDesc: 'Accepted orders ready for pickup will appear here.',
+      emptyDesc: 'Pending and ongoing deliveries will appear here.',
       itemBuilder: (o) => _ActiveCard(order: o),
       refresh: session.refreshMyOrders,
     );
   }
 }
 
-class _DeliveryCard extends StatelessWidget {
+class _ActiveCard extends StatelessWidget {
   final OnlineOrder order;
-  const _DeliveryCard({required this.order});
+  const _ActiveCard({required this.order});
 
   @override
   Widget build(BuildContext context) {
+    final session = context.read<RiderSession>();
+    if (order.needsAcceptance) {
+      return FTCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(order.orderNumber, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: FT.ink)),
+                ),
+                _statusChip('Awaiting acceptance', FT.goldDark, FT.goldLight),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _row(Icons.person_rounded, order.customerName),
+            const SizedBox(height: 6),
+            _row(Icons.location_on_rounded, order.deliveryAddress),
+            const SizedBox(height: 6),
+            _row(Icons.payments_rounded, '${fmtTZS(order.total)} · ${order.paymentMethod ?? 'N/A'}', color: FT.inkSoft),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      try {
+                        await session.rejectOrder(order);
+                        if (context.mounted) showFTSnack(context, 'Order rejected');
+                      } catch (e) {
+                        if (context.mounted) showFTError(context, e);
+                      }
+                    },
+                    style: ftGlassOutlinedStyle(FT.inkSoft),
+                    child: const Text('Reject', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        await session.acceptOrder(order);
+                        showFTSnackMessenger(messenger, 'Order accepted', background: FT.green700);
+                        shellTab.value = 2;
+                      } catch (e) {
+                        if (context.mounted) showFTError(context, e);
+                      }
+                    },
+                    style: ftGlassFilledStyle(FT.green700),
+                    child: const Text('Accept', style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
     return FTCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -163,7 +224,11 @@ class _DeliveryCard extends StatelessWidget {
               Expanded(
                 child: Text(order.orderNumber, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: FT.ink)),
               ),
-              _statusChip('Out for delivery', FT.green700, FT.green50),
+              _statusChip(
+                order.isActiveDelivery ? 'Out for delivery' : 'Accepted',
+                FT.green700,
+                FT.green50,
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -175,15 +240,29 @@ class _DeliveryCard extends StatelessWidget {
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => OrderDetailScreen(orderId: order.id)),
-              ),
-              icon: const Icon(Icons.map_rounded, size: 16),
-              label: const Text('View & Navigate', style: TextStyle(fontWeight: FontWeight.w800)),
-              style: ftGlassFilledStyle(FT.green700),
-            ),
+            child: order.isActiveDelivery
+                ? ElevatedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => OrderDetailScreen(orderId: order.id)),
+                    ),
+                    icon: const Icon(Icons.map_rounded, size: 16),
+                    label: const Text('View & Navigate', style: TextStyle(fontWeight: FontWeight.w800)),
+                    style: ftGlassFilledStyle(FT.green700),
+                  )
+                : ElevatedButton.icon(
+                    onPressed: () async {
+                      try {
+                        await session.updateOrderStatus(order, 'out_for_delivery');
+                        if (context.mounted) showFTSnack(context, 'Order marked as out for delivery', background: FT.green700);
+                      } catch (e) {
+                        if (context.mounted) showFTError(context, e);
+                      }
+                    },
+                    icon: const Icon(Icons.directions_bike_rounded, size: 16),
+                    label: const Text('Start Delivery', style: TextStyle(fontWeight: FontWeight.w800)),
+                    style: ftGlassFilledStyle(FT.green700),
+                  ),
           ),
         ],
       ),
@@ -201,10 +280,58 @@ class _DeliveryTab extends StatelessWidget {
     return _OrderList(
       orders: orders,
       emptyIcon: Icons.delivery_dining_rounded,
-      emptyTitle: 'No deliveries in progress',
-      emptyDesc: 'Orders out for delivery appear here with live navigation.',
+      emptyTitle: 'No completed deliveries',
+      emptyDesc: 'Delivered orders appear here with their full details.',
       itemBuilder: (o) => _DeliveryCard(order: o),
       refresh: session.refreshMyOrders,
+    );
+  }
+}
+
+class _DeliveryCard extends StatelessWidget {
+  final OnlineOrder order;
+  const _DeliveryCard({required this.order});
+
+  @override
+  Widget build(BuildContext context) {
+    return FTCard(
+      padding: const EdgeInsets.all(16),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => OrderDetailScreen(orderId: order.id)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(order.orderNumber, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: FT.ink)),
+              ),
+              _statusChip('Delivered', FT.green700, FT.green50),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _row(Icons.person_rounded, '${order.customerName} · ${order.customerPhone}'),
+          const SizedBox(height: 6),
+          _row(Icons.location_on_rounded, order.deliveryAddress),
+          const SizedBox(height: 6),
+          _row(Icons.payments_rounded, '+${fmtTZS(order.deliveryFee)} · ${order.paymentMethod ?? 'N/A'}', color: FT.inkSoft),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => OrderDetailScreen(orderId: order.id)),
+              ),
+              icon: const Icon(Icons.visibility_rounded, size: 16),
+              label: const Text('View Details', style: TextStyle(fontWeight: FontWeight.w800)),
+              style: ftGlassFilledStyle(FT.green700),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -253,180 +380,6 @@ class _OrderList extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 12),
           child: itemBuilder(orders[i]),
         ),
-      ),
-    );
-  }
-}
-
-class _PendingCard extends StatelessWidget {
-  final OnlineOrder order;
-  const _PendingCard({required this.order});
-
-  @override
-  Widget build(BuildContext context) {
-    final session = context.read<RiderSession>();
-    return FTCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(order.orderNumber, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: FT.ink)),
-              ),
-              _statusChip('Awaiting acceptance', FT.goldDark, FT.goldLight),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _row(Icons.person_rounded, order.customerName),
-          const SizedBox(height: 6),
-          _row(Icons.location_on_rounded, order.deliveryAddress),
-          const SizedBox(height: 6),
-          _row(Icons.payments_rounded, '${fmtTZS(order.total)} · ${order.paymentMethod ?? 'N/A'}', color: FT.inkSoft),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () async {
-                    try {
-                      await session.rejectOrder(order);
-                      if (context.mounted) showFTSnack(context, 'Order rejected');
-                    } catch (e) {
-                      if (context.mounted) showFTError(context, e);
-                    }
-                  },
-                  style: ftGlassOutlinedStyle(FT.inkSoft),
-                  child: const Text('Reject', style: TextStyle(fontWeight: FontWeight.w700)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    try {
-                      await session.acceptOrder(order);
-                      showFTSnackMessenger(
-                        messenger,
-                        'Order accepted',
-                        background: FT.green700,
-                      );
-                      shellTab.value = 2;
-                    } catch (e) {
-                      if (context.mounted) showFTError(context, e);
-                    }
-                  },
-                  style: ftGlassFilledStyle(FT.green700),
-                  child: const Text('Accept', style: TextStyle(fontWeight: FontWeight.w800)),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActiveCard extends StatelessWidget {
-  final OnlineOrder order;
-  const _ActiveCard({required this.order});
-
-  @override
-  Widget build(BuildContext context) {
-    final session = context.read<RiderSession>();
-    return FTCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(order.orderNumber, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: FT.ink)),
-              ),
-              _statusChip('Accepted', FT.green700, FT.green50),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _row(Icons.person_rounded, '${order.customerName} · ${order.customerPhone}'),
-          const SizedBox(height: 6),
-          _row(Icons.location_on_rounded, order.deliveryAddress),
-          const SizedBox(height: 6),
-          _row(Icons.payments_rounded, '${fmtTZS(order.total)} · ${order.paymentMethod ?? 'N/A'}', color: FT.inkSoft),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                try {
-                  await session.updateOrderStatus(order, 'out_for_delivery');
-                  if (context.mounted) showFTSnack(context, 'Order marked as out for delivery', background: FT.green700);
-                } catch (e) {
-                  if (context.mounted) showFTError(context, e);
-                }
-              },
-              icon: const Icon(Icons.directions_bike_rounded, size: 16),
-              label: const Text('Start Delivery', style: TextStyle(fontWeight: FontWeight.w800)),
-              style: ftGlassFilledStyle(FT.green700),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CompletedCard extends StatelessWidget {
-  final OnlineOrder order;
-  const _CompletedCard({required this.order});
-
-  @override
-  Widget build(BuildContext context) {
-    final cancelled = order.status == 'cancelled';
-    return FTCard(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: cancelled ? FT.goldLight : FT.green50,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              cancelled ? Icons.cancel_rounded : Icons.check_circle_rounded,
-              size: 20,
-              color: cancelled ? FT.goldDark : FT.green700,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(order.orderNumber, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: FT.ink)),
-                const SizedBox(height: 3),
-                Text(
-                  '${order.customerName} · ${order.isDelivered ? 'Delivered' : 'Cancelled'}',
-                  style: const TextStyle(fontSize: 11.5, color: FT.inkSoft),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            order.isDelivered ? '+${fmtTZS(order.deliveryFee)}' : fmtTZS(order.total),
-            style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w900,
-              color: cancelled ? FT.inkSoft : FT.green700,
-            ),
-          ),
-        ],
       ),
     );
   }

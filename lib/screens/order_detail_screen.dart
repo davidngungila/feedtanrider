@@ -112,7 +112,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       onRefresh: () async => _reload(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          20 + MediaQuery.paddingOf(context).bottom + 12,
+        ),
         children: [
           _statusBanner(o),
           const SizedBox(height: 14),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -126,6 +127,23 @@ class ApiService {
       (await _dio.get('/rider/bank-details')).data as Map<String, dynamic>;
   Future<Map<String, dynamic>> updateBankDetails(Map<String, dynamic> d) async =>
       (await _dio.put('/rider/bank-details', data: d)).data as Map<String, dynamic>;
+
+  // ---- Profile image (per MOBILE_APP_NOTES.md §2) ----
+  Future<Map<String, dynamic>> uploadProfileImage(File image) async {
+    final form = FormData.fromMap({
+      'image': await MultipartFile.fromFile(
+        image.path,
+        filename: image.path.split(RegExp(r'[/\\]')).last,
+      ),
+    });
+    final res = await _dio.post('/rider/profile-image', data: form);
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> removeProfileImage() async {
+    final res = await _dio.post('/rider/profile-image', data: {'remove': true});
+    return res.data as Map<String, dynamic>;
+  }
 
   // ---- Performance & Reviews ----
   Future<Map<String, dynamic>> getPerformance() async =>
