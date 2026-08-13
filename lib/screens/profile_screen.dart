@@ -248,28 +248,33 @@ class _ProfileAvatarState extends State<_ProfileAvatar> {
 
   Future<void> _showOptions() async {
     if (_busy) return;
-    final action = await showModalBottomSheet<String>(
+    final action = await showDialog<String>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(16),
+      builder: (ctx) => FTGlassDialog(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            FTCard(
-              padding: const EdgeInsets.all(4),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _option(ctx, Icons.photo_camera_rounded, 'Take a photo', 'camera'),
-                  _option(ctx, Icons.photo_library_rounded, 'Choose from gallery', 'gallery'),
-                  if (widget.rider.hasProfileImage)
-                    _option(ctx, Icons.delete_outline_rounded, 'Remove photo', 'remove',
-                        color: FT.danger),
-                ],
-              ),
+            const Row(
+              children: [
+                Icon(Icons.account_circle_rounded, color: FT.green700, size: 24),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text('Profile photo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            const Text(
+              'Choose how to update your photo',
+              style: TextStyle(fontSize: 12.5, color: FT.inkSoft),
+            ),
+            const SizedBox(height: 6),
+            _option(ctx, Icons.photo_camera_rounded, 'Take a photo', 'camera'),
+            _option(ctx, Icons.photo_library_rounded, 'Choose from gallery', 'gallery'),
+            if (widget.rider.hasProfileImage)
+              _option(ctx, Icons.delete_outline_rounded, 'Remove photo', 'remove',
+                  color: FT.danger),
           ],
         ),
       ),

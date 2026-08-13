@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../config.dart';
+import '../models.dart';
 import '../screens/order_detail_screen.dart';
 import '../state/session_expired.dart';
+import '../state/tabs.dart';
 import 'api_service.dart';
 
 /// Runs in a separate isolate when the app is backgrounded or terminated,
@@ -22,15 +24,40 @@ class PushService {
   PushService._();
   static final PushService instance = PushService._();
 
+  /// Consumed by [MainShell.initState] when the app is launched from a
+  /// terminated state by tapping a notification.
+  static int? pendingInitialTab;
+  static int? pendingInitialOrderId;
+
+  /// Applies a cold-start notification intent once the shell is up.
+  static void consumeInitialIntent() {
+    final tab = pendingInitialTab;
+    final orderId = pendingInitialOrderId;
+    pendingInitialTab = null;
+    pendingInitialOrderId = null;
+    shellTab.value = tab ?? 0;
+    if (orderId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ApiSessionExpiredBinder.navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => OrderDetailScreen(orderId: orderId),
+          ),
+        );
+      });
+    }
+  }
+
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   StreamSubscription<String>? _tokenRefreshSub;
   bool _ready = false;
 
+  /// Matches the backend `FCM_DEFAULT_CHANNEL` so system-posted
+  /// notification messages (background/terminated state) display correctly.
   static const _channel = AndroidNotificationChannel(
-    'high_importance_channel',
-    'Deliveries & Alerts',
-    description: 'New delivery requests, order updates and account alerts.',
+    'general',
+    'General notifications',
+    description: 'Order, trip and dispatch updates.',
     importance: Importance.high,
   );
 
@@ -100,6 +127,21 @@ class PushService {
     }
   }
 
+  /// Tells the backend to deactivate this device's token on logout.
+  Future<void> unregisterToken() async {
+    await _tokenRefreshSub?.cancel();
+    _tokenRefreshSub = null;
+    if (!_ready) return;
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null && token.isNotEmpty) {
+        await ApiService.instance.removeDeviceToken(token);
+      }
+    } catch (_) {
+      // Best-effort cleanup; the server row expires/becomes stale anyway.
+    }
+  }
+
   /// Displays a local notification (foreground messages, or data-only
   /// messages handled from the background isolate).
   Future<void> showLocalNotification(RemoteMessage message) async {
@@ -114,9 +156,9 @@ class PushService {
       body: body,
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
-          'high_importance_channel',
-          'Deliveries & Alerts',
-          channelDescription: 'New delivery requests, order updates and account alerts.',
+          'general',
+          'General notifications',
+          channelDescription: 'Order, trip and dispatch updates.',
           importance: Importance.high,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
@@ -128,6 +170,44 @@ class PushService {
 
   void handleOpenedApp(RemoteMessage message) {
     _navigateToPayload(_payloadFor(message));
+  }
+
+  /// Shows a local push notification when a new available delivery request is
+  /// detected by the polling loop. Tapping it opens the Available tab.
+  /// Deliberately omits product prices and the delivery address.
+  Future<void> notifyDispatchRequest(DispatchRequest r) async {
+    if (!_ready) return;
+    final order = r.order;
+    final title = 'New delivery request';
+    final items = order.items
+        .map((it) => '${it.quantity} × ${it.productName}')
+        .take(3)
+        .join(', ');
+    final itemInfo = items.isEmpty
+        ? '${order.itemCount} item${order.itemCount == 1 ? '' : 's'}'
+        : items;
+    final payment = order.isCash
+        ? 'Collect cash on delivery'
+        : (order.paymentMethod ?? 'Paid online');
+    final body = order.orderNumber.isNotEmpty
+        ? 'Order ${order.orderNumber} · ${order.customerName}\n$itemInfo · $payment'
+        : 'A new delivery is available near you';
+    await _notifications.show(
+      id: r.id.hashCode,
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'general',
+          'General notifications',
+          channelDescription: 'Order, trip and dispatch updates.',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+      payload: 'dispatch.request.new|${order.id}',
+    );
   }
 
   String _payloadFor(RemoteMessage message) {
@@ -145,12 +225,33 @@ class PushService {
   void _navigateToPayload(String? payload) {
     if (payload == null || payload.isEmpty) return;
     final parts = payload.split('|');
-    final orderId = parts.length > 1 ? int.tryParse(parts[1]) : null;
-    if (orderId == null) return;
     final nav = ApiSessionExpiredBinder.navigatorKey.currentState;
-    if (nav == null) return;
-    nav.push(MaterialPageRoute(
-      builder: (_) => OrderDetailScreen(orderId: orderId),
-    ));
+
+    final type = (parts.isNotEmpty ? parts.first : '').toUpperCase();
+    final orderId = parts.length > 1 ? int.tryParse(parts[1]) : null;
+
+    // "New delivery available" style alerts open the Available tab so the
+    // rider can Accept/Decline the request right away.
+    final isDispatch = type.contains('DISPATCH') ||
+        type.contains('TRIP') ||
+        type.contains('AVAILABLE') ||
+        type.contains('NEW_ORDER') ||
+        type.contains('REQUEST');
+    if (isDispatch) {
+      if (nav == null) {
+        pendingInitialTab = 1;
+      } else {
+        shellTab.value = 1;
+      }
+      return;
+    }
+    if (orderId == null) return;
+    if (nav != null) {
+      nav.push(MaterialPageRoute(
+        builder: (_) => OrderDetailScreen(orderId: orderId),
+      ));
+    } else {
+      pendingInitialOrderId = orderId;
+    }
   }
 }

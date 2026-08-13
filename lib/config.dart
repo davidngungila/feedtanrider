@@ -4,9 +4,10 @@ class AppConfig {
   // static const String baseUrl = 'http://10.0.2.2:8000/api'; // Android emulator
   // static const String baseUrl = 'http://localhost:8000/api'; // iOS simulator
 
-  // Temporary: Firebase (push notifications) is disabled until
-  // android/app/google-services.json is added. Flip to true to re-enable.
-  static const bool firebaseEnabled = false;
+  // Firebase (push notifications) — enabled.
+  // Requires android/app/google-services.json (Android) and
+  // ios/Runner/GoogleService-Info.plist (iOS) added to the project.
+  static const bool firebaseEnabled = true;
 
   // Store pickup point (used to draw the route from store to customer).
   static const double storeLat = -3.3869;

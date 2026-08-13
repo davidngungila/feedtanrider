@@ -240,12 +240,30 @@ FTErrorInfo? resolveErrorInfo(Object? error) {
     final info = _catalog[code];
     if (info != null) return info;
   }
+
+  // The backend's own message (e.g. Laravel `{"message": "The delivery code
+  // is incorrect."}`) is always more accurate than guessing from the
+  // exception string — surface it as-is instead of mislabeling it.
+  if (error is DioException && error.response != null) {
+    final data = error.response!.data;
+    if (data is Map && data['message'] is String) return null;
+    // A 5xx with no parseable body is a genuine server-side failure.
+    final status = error.response!.statusCode;
+    if (status != null && status >= 500) return _catalog['NET_003'];
+  }
+
   final msg = error.toString().toLowerCase();
   for (final info in _catalog.values) {
     if (msg.contains(info.message.toLowerCase()) ||
         msg.contains(info.title.toLowerCase())) {
       return info;
     }
+  }
+  if (msg.contains('connection error') || msg.contains('internet connection')) {
+    return _catalog['NET_001'];
+  }
+  if (msg.contains('timeout') || msg.contains('timed out')) {
+    return _catalog['NET_002'];
   }
   return null;
 }

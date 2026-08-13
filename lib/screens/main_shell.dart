@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../services/push_service.dart';
 import '../state/tabs.dart';
 import '../theme.dart';
 import 'available_screen.dart';
@@ -20,7 +21,7 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
-    shellTab.value = 0;
+    PushService.consumeInitialIntent();
     shellTab.addListener(_onTabChanged);
   }
 

@@ -3,8 +3,7 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     // Firebase: generates resources from google-services.json (required in android/app/).
-    // TEMP DISABLED: uncomment once android/app/google-services.json is present.
-    // id("com.google.gms.google-services")
+    id("com.google.gms.google-services")
 }
 
 android {

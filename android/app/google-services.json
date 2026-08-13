@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "267813656499",
+    "project_id": "feedtanstore-50473",
+    "storage_bucket": "feedtanstore-50473.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:267813656499:android:3dd9ab5e0b5b2b413f9dc6",
+        "android_client_info": {
+          "package_name": "com.feedtanstore.rider"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA5zJBbe5im1j11JTWQw5Bu8GpPHUtl1MM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

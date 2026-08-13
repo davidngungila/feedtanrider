@@ -19,6 +19,7 @@ class AvailableScreen extends StatefulWidget {
 class _AvailableScreenState extends State<AvailableScreen> {
   Timer? _countdown;
   bool _accepting = false;
+  String? _poppedError;
 
   @override
   void initState() {
@@ -32,6 +33,19 @@ class _AvailableScreenState extends State<AvailableScreen> {
   void dispose() {
     _countdown?.cancel();
     super.dispose();
+  }
+
+  void _checkConnectionError(RiderSession session) {
+    final err = session.lastError;
+    if (err == null || err.isEmpty) {
+      _poppedError = null;
+      return;
+    }
+    if (err == _poppedError) return;
+    _poppedError = err;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showFTError(context, err);
+    });
   }
 
   Future<void> _accept(RiderSession session, DispatchRequest r) async {
@@ -80,6 +94,7 @@ class _AvailableScreenState extends State<AvailableScreen> {
   Widget build(BuildContext context) {
     return Consumer<RiderSession>(
       builder: (context, session, _) {
+        _checkConnectionError(session);
         final requests = session.dispatchRequests;
         final actionable = requests
             .where((r) => !(r.remaining != null && r.remaining!.isNegative))
@@ -157,26 +172,6 @@ class _AvailableScreenState extends State<AvailableScreen> {
                                 'New dispatch requests appear here as soon as the shop sends them.',
                               ),
                             ),
-                            if (session.lastError != null)
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(32, 6, 32, 0),
-                                child: Center(
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.wifi_off_rounded, size: 14, color: FT.danger),
-                                      const SizedBox(width: 6),
-                                      Flexible(
-                                        child: Text(
-                                          session.lastError!,
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(fontSize: 11.5, color: FT.danger),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
                           ],
                         )
                       : ListView.builder(

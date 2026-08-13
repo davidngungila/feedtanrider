@@ -177,30 +177,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _markDelivered(OnlineOrder o) async {
-    final session = context.read<RiderSession>();
-    final code = await showDialog<String>(
+    final done = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => _DeliveryCodeDialog(orderNumber: o.orderNumber),
+      builder: (ctx) => _DeliveryCodeDialog(order: o),
     );
-    if (code == null) return;
-    if (!RegExp(r'^\d{4}$').hasMatch(code)) {
-      if (mounted) showFTSnack(context, 'Delivery code must be 4 digits');
-      return;
-    }
-    try {
-      await session.updateOrderStatus(
-            o,
-            'delivered',
-            deliveryCode: code,
-            notes: 'Delivered successfully',
-          );
-      if (!mounted) return;
-      showFTSnack(context, 'Delivery complete', background: FT.green700);
-      _reload();
-    } catch (e) {
-      if (mounted) showFTError(context, e);
-    }
+    if (done != true || !mounted) return;
+    showFTSnack(context, 'Delivery complete', background: FT.green700);
+    _reload();
   }
 
   Widget _statusBanner(OnlineOrder o) {
@@ -487,8 +471,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 }
 
 class _DeliveryCodeDialog extends StatefulWidget {
-  final String orderNumber;
-  const _DeliveryCodeDialog({required this.orderNumber});
+  final OnlineOrder order;
+  const _DeliveryCodeDialog({required this.order});
 
   @override
   State<_DeliveryCodeDialog> createState() => _DeliveryCodeDialogState();
@@ -496,7 +480,8 @@ class _DeliveryCodeDialog extends StatefulWidget {
 
 class _DeliveryCodeDialogState extends State<_DeliveryCodeDialog> {
   final _codeCtrl = TextEditingController();
-  bool _error = false;
+  bool _loading = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -504,70 +489,102 @@ class _DeliveryCodeDialogState extends State<_DeliveryCodeDialog> {
     super.dispose();
   }
 
+  Future<void> _verify() async {
+    final v = _codeCtrl.text.trim();
+    if (!RegExp(r'^\d{4}$').hasMatch(v)) {
+      setState(() => _error = 'Invalid delivery code. Please enter the correct 4-digit code.');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await context.read<RiderSession>().updateOrderStatus(
+            widget.order,
+            'delivered',
+            deliveryCode: v,
+            notes: 'Delivered successfully',
+          );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      showFTError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FTGlassDialog(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.password_rounded, color: FT.green700, size: 24),
-              SizedBox(width: 8),
-              Text('Delivery Code', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Ask the customer for the 4-digit delivery code for ${widget.orderNumber}.',
-            style: const TextStyle(fontSize: 13, color: FT.inkSoft, height: 1.4),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _codeCtrl,
-            keyboardType: TextInputType.number,
-            maxLength: 4,
-            textAlign: TextAlign.center,
-            autofocus: true,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 8),
-            decoration: ftInputDecoration(
-              label: 'Delivery code',
-              icon: Icons.pin_rounded,
+    return PopScope(
+      canPop: !_loading,
+      child: FTGlassDialog(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.password_rounded, color: FT.green700, size: 24),
+                SizedBox(width: 8),
+                Text('Delivery Code', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+              ],
             ),
-            onChanged: (_) {
-              if (_error) setState(() => _error = false);
-            },
-          ),
-          if (_error)
-            const Padding(
-              padding: EdgeInsets.only(top: 6),
-              child: Text('Invalid delivery code. Please enter the correct 4-digit code.', style: TextStyle(fontSize: 11, color: FT.danger)),
+            const SizedBox(height: 10),
+            Text(
+              'Ask the customer for the 4-digit delivery code for ${widget.order.orderNumber}.',
+              style: const TextStyle(fontSize: 13, color: FT.inkSoft, height: 1.4),
             ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel', style: TextStyle(color: FT.inkSoft, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _codeCtrl,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              enabled: !_loading,
+              textAlign: TextAlign.center,
+              autofocus: true,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 8),
+              decoration: ftInputDecoration(
+                label: 'Delivery code',
+                icon: Icons.pin_rounded,
               ),
-              const SizedBox(width: 8),
-              FilledButton(
-                style: ftGlassFilledStyle(FT.green700),
-                onPressed: () {
-                  final v = _codeCtrl.text.trim();
-                  if (!RegExp(r'^\d{4}$').hasMatch(v)) {
-                    setState(() => _error = true);
-                    return;
-                  }
-                  Navigator.pop(context, v);
-                },
-                child: const Text('Verify & Complete', style: TextStyle(fontWeight: FontWeight.w800)),
+              onChanged: (_) {
+                if (_error != null) setState(() => _error = null);
+              },
+            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(fontSize: 11, color: FT.danger, height: 1.35),
+                ),
               ),
-            ],
-          ),
-        ],
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: _loading ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: FT.inkSoft, fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  style: ftGlassFilledStyle(FT.green700),
+                  onPressed: _loading ? null : _verify,
+                  child: _loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Verify & Complete', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

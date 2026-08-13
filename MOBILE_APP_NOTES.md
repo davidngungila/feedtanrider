@@ -194,10 +194,188 @@ php artisan migrate:reconcile  # if a DB was imported from an older backup
 
 ---
 
-## 7. Push notifications (plan)
+## 7. Push notifications (implemented in Flutter)
 
-FCM tokens belong to `user_devices` (per authenticated user, multiple devices).
-Register the token after login (`POST` a token-registration endpoint), handle
-refresh, and deep-link taps to the trip screen via the `tracking_session_id` in
-the notification payload. FCM sends only on alert events; the live map stays on
-WebSocket.
+Flutter side is complete and enabled (`AppConfig.firebaseEnabled = true`):
+
+- `lib/services/push_service.dart` — Firebase init, foreground/background/terminated
+  handling, local notification display, tap deep-linking.
+- Token registered after login via `POST /rider/device-token`
+  (`{token, platform}`). Tokens refresh automatically via `onTokenRefresh`.
+- Tap behavior: notifications whose payload type suggests a new dispatch request
+  (`dispatch`, `trip`, `available`, `new_order`, `request`) open the **Available**
+  tab; other payloads with an order id open the order detail screen.
+
+Required external setup (do once):
+
+1. `android/app/google-services.json` is present and valid (project
+   `feedtanstore-50473`, package `com.feedtanstore.rider`). The Google Services
+   Gradle plugin is enabled in `android/app/build.gradle.kts`. The debug build
+   succeeds and Firebase initializes on device.
+2. iOS: add `ios/Runner/GoogleService-Info.plist` and enable the Push
+   Notifications capability in Xcode (only needed when shipping iOS).
+3. Laravel backend — full spec below.
+
+### 7.1 Laravel backend spec
+
+**Firebase project**: `feedtanstore-50473` (web API key in google-services.json
+can be used as the FCM sender credential, or create a dedicated service account
+for HTTP v1 — recommended).
+
+#### a. Migration — `user_devices`
+
+```php
+Schema::create('user_devices', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+    $table->string('fcm_token', 512)->unique();
+    $table->string('device_type', 20)->default('android'); // android | ios | web
+    $table->string('device_name', 100)->nullable();
+    $table->string('app_version', 30)->nullable();
+    $table->boolean('is_active')->default(true);
+    $table->timestamp('last_used_at')->nullable();
+    $table->timestamps();
+    $table->index(['user_id', 'is_active']);
+});
+```
+
+#### b. Model — `app/Models/UserDevice.php`
+
+```php
+class UserDevice extends Model
+{
+    protected $fillable = [
+        'user_id', 'fcm_token', 'device_type', 'device_name',
+        'app_version', 'is_active', 'last_used_at',
+    ];
+
+    protected $casts = ['is_active' => 'bool', 'last_used_at' => 'datetime'];
+
+    public function user(): BelongsTo { return $this->belongsTo(User::class); }
+
+    public static function upsertForUser(int $userId, array $data): self
+    {
+        $device = self::where('user_id', $userId)
+            ->where('fcm_token', $data['fcm_token'])
+            ->first();
+        if (! $device) {
+            $device = new self(['user_id' => $userId]);
+        }
+        $device->fill($data);
+        $device->is_active = true;
+        $device->last_used_at = now();
+        $device->save();
+        return $device;
+    }
+}
+```
+
+#### c. Endpoint — register/refresh device token
+
+`routes/api.php` (inside the rider auth group):
+
+```php
+Route::post('/rider/device-token', [DeviceTokenController::class, 'store']);
+```
+
+`app/Http/Controllers/Api/Rider/DeviceTokenController.php`:
+
+```php
+class DeviceTokenController extends Controller
+{
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'token'    => ['required', 'string', 'max:512'],
+            'platform' => ['sometimes', 'string', 'in:android,ios,web'],
+        ]);
+
+        UserDevice::upsertForUser($request->user()->id, [
+            'fcm_token'   => $data['token'],
+            'device_type' => $data['platform'] ?? 'android',
+        ]);
+
+        return response()->json(['status' => 'ok']);
+    }
+}
+```
+
+#### d. Service — `app/Services/PushNotificationService.php`
+
+```php
+class PushNotificationService
+{
+    public function sendToUser(User $user, string $title, string $body, array $data = []): void
+    {
+        $tokens = $user->devices()->where('is_active', true)->pluck('fcm_token');
+        $this->send($tokens->all(), $title, $body, $data);
+    }
+
+    public function send(array $tokens, string $title, string $body, array $data = []): void
+    {
+        foreach (array_chunk($tokens, 500) as $chunk) {
+            $this->sendChunk($chunk, $title, $body, $data);
+        }
+    }
+
+    protected function sendChunk(array $tokens, string $title, string $body, array $data): void
+    {
+        $http = Http::withToken(config('services.fcm.server_key'))
+            ->asJson()
+            ->post('https://fcm.googleapis.com/fcm/send', [
+                'registration_ids' => $tokens,
+                'priority'         => 'high',
+                'notification'     => [
+                    'title' => $title,
+                    'body'  => $body,
+                    'sound' => 'default',
+                ],
+                'data' => array_merge(['click_action' => 'FLUTTER_NOTIFICATION_CLICK'], $data),
+            ]);
+
+        // Best-effort: mark permanently-failed (Unavailable/NotRegistered) tokens inactive.
+        if ($http->ok()) {
+            $results = $http->json('results', []);
+            foreach ($results as $i => $r) {
+                if (isset($r['error'])) {
+                    UserDevice::where('fcm_token', $tokens[$i] ?? '')
+                        ->where('is_active', true)
+                        ->update(['is_active' => false]);
+                }
+            }
+        }
+    }
+}
+```
+
+`config/services.php`:
+
+```php
+'fcm' => [
+    'server_key' => env('FCM_SERVER_KEY'),
+],
+```
+
+#### e. Send on new dispatch request
+
+When a dispatch request is created (dispatch controller / job / observer):
+
+```php
+$push = app(PushNotificationService::class);
+$push->sendToUser(
+    $rider,
+    'New delivery available',
+    "Order {$order->order_number} is ready for pickup.",
+    [
+        'type' => 'dispatch_request',
+        'dispatch_request_id' => (string) $dispatch->id,
+        'order_id' => (string) $order->id,
+    ],
+);
+```
+
+The Flutter app matches the `type` field (`dispatch_request` contains
+"dispatch") and opens the **Available** tab; the alert is shown locally for
+foreground/background/terminated states. FCM sends only on alert events; the
+live map stays on WebSocket.
+

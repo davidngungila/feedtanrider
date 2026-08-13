@@ -161,11 +161,20 @@ class ApiService {
   Future<void> updateDeviceToken(String token) async {
     try {
       await _dio.post('/rider/device-token', data: {
-        'token': token,
-        'platform': 'android',
+        'fcm_token': token,
+        'device_type': 'android',
+        'app_version': '1.0.0',
       });
     } catch (_) {
       // Non-fatal: retried on next login / token refresh.
+    }
+  }
+
+  Future<void> removeDeviceToken(String token) async {
+    try {
+      await _dio.delete('/rider/device-token', data: {'fcm_token': token});
+    } catch (_) {
+      // Non-fatal: the row stays active if the server is unreachable.
     }
   }
 
