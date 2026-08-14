@@ -44,6 +44,28 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
     super.dispose();
   }
 
+  Future<void> _pickDob() async {
+    final parsed = DateTime.tryParse(_dobCtrl.text);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: parsed ?? DateTime(2000),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+      helpText: 'Date of birth',
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: ColorScheme.fromSeed(seedColor: FT.green700),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      _dobCtrl.text = '${picked.year.toString().padLeft(4, '0')}-'
+          '${picked.month.toString().padLeft(2, '0')}-'
+          '${picked.day.toString().padLeft(2, '0')}';
+    }
+  }
+
   Future<void> _save() async {
     final session = context.read<RiderSession>();
     setState(() => _loading = true);
@@ -76,7 +98,16 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         const SizedBox(height: 14),
         TextField(controller: _phoneCtrl, keyboardType: TextInputType.phone, decoration: ftInputDecoration(label: 'Phone', icon: Icons.phone_rounded)),
         const SizedBox(height: 14),
-        TextField(controller: _dobCtrl, keyboardType: TextInputType.datetime, decoration: ftInputDecoration(label: 'Date of birth (YYYY-MM-DD)', icon: Icons.cake_rounded)),
+        TextField(
+          controller: _dobCtrl,
+          readOnly: true,
+          onTap: _pickDob,
+          decoration: ftInputDecoration(
+            label: 'Date of birth (YYYY-MM-DD)',
+            icon: Icons.cake_rounded,
+            suffix: const Icon(Icons.calendar_month_rounded, color: FT.green600, size: 20),
+          ),
+        ),
         const SizedBox(height: 14),
         TextField(controller: _genderCtrl, decoration: ftInputDecoration(label: 'Gender', icon: Icons.wc_rounded)),
         const SizedBox(height: 14),
@@ -126,6 +157,70 @@ class _VehicleScreenState extends State<VehicleScreen> {
     super.dispose();
   }
 
+  Future<void> _pickYear() async {
+    final now = DateTime.now();
+    final current = int.tryParse(_yearCtrl.text) ?? now.year;
+    final years = [for (var y = now.year; y >= 1980; y--) y];
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (ctx) => FTGlassDialog(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.calendar_today_rounded, color: FT.green700, size: 22),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text('Select year', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 300,
+              width: double.maxFinite,
+              child: GridView.count(
+                crossAxisCount: 4,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 1.7,
+                children: [
+                  for (final y in years)
+                    InkWell(
+                      key: ValueKey(y),
+                      onTap: () => Navigator.pop(ctx, y),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: y == current ? FT.green100 : Colors.white.withValues(alpha: 0.8),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: y == current ? FT.green600 : FT.line),
+                        ),
+                        child: Text(
+                          '$y',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: y == current ? FT.green800 : FT.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) {
+      _yearCtrl.text = '$selected';
+    }
+  }
+
   Future<void> _save() async {
     final session = context.read<RiderSession>();
     setState(() => _loading = true);
@@ -162,7 +257,16 @@ class _VehicleScreenState extends State<VehicleScreen> {
         const SizedBox(height: 14),
         TextField(controller: _colorCtrl, decoration: ftInputDecoration(label: 'Vehicle color', icon: Icons.palette_rounded)),
         const SizedBox(height: 14),
-        TextField(controller: _yearCtrl, keyboardType: TextInputType.number, decoration: ftInputDecoration(label: 'Vehicle year', icon: Icons.calendar_today_rounded)),
+        TextField(
+          controller: _yearCtrl,
+          readOnly: true,
+          onTap: _pickYear,
+          decoration: ftInputDecoration(
+            label: 'Vehicle year',
+            icon: Icons.calendar_today_rounded,
+            suffix: const Icon(Icons.calendar_month_rounded, color: FT.green600, size: 20),
+          ),
+        ),
         const SizedBox(height: 22),
         FTButton(label: 'Save Changes', onTap: _save, loading: _loading, icon: Icons.save_rounded),
       ],
@@ -208,6 +312,28 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     super.dispose();
   }
 
+  Future<void> _pickDate(TextEditingController ctrl, {required String label}) async {
+    final parsed = DateTime.tryParse(ctrl.text);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: parsed ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      helpText: label,
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: ColorScheme.fromSeed(seedColor: FT.green700),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      ctrl.text = '${picked.year.toString().padLeft(4, '0')}-'
+          '${picked.month.toString().padLeft(2, '0')}-'
+          '${picked.day.toString().padLeft(2, '0')}';
+    }
+  }
+
   Future<void> _save() async {
     final session = context.read<RiderSession>();
     setState(() => _loading = true);
@@ -240,11 +366,29 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         const SizedBox(height: 14),
         TextField(controller: _dlCtrl, decoration: ftInputDecoration(label: 'Driving license number', icon: Icons.badge_outlined)),
         const SizedBox(height: 14),
-        TextField(controller: _dlExpiryCtrl, decoration: ftInputDecoration(label: 'License expiry (YYYY-MM-DD)', icon: Icons.event_rounded)),
+        TextField(
+          controller: _dlExpiryCtrl,
+          readOnly: true,
+          onTap: () => _pickDate(_dlExpiryCtrl, label: 'License expiry'),
+          decoration: ftInputDecoration(
+            label: 'License expiry (YYYY-MM-DD)',
+            icon: Icons.event_rounded,
+            suffix: const Icon(Icons.calendar_month_rounded, color: FT.green600, size: 20),
+          ),
+        ),
         const SizedBox(height: 14),
         TextField(controller: _insCtrl, decoration: ftInputDecoration(label: 'Insurance number', icon: Icons.verified_user_rounded)),
         const SizedBox(height: 14),
-        TextField(controller: _insExpiryCtrl, decoration: ftInputDecoration(label: 'Insurance expiry (YYYY-MM-DD)', icon: Icons.event_rounded)),
+        TextField(
+          controller: _insExpiryCtrl,
+          readOnly: true,
+          onTap: () => _pickDate(_insExpiryCtrl, label: 'Insurance expiry'),
+          decoration: ftInputDecoration(
+            label: 'Insurance expiry (YYYY-MM-DD)',
+            icon: Icons.event_rounded,
+            suffix: const Icon(Icons.calendar_month_rounded, color: FT.green600, size: 20),
+          ),
+        ),
         const SizedBox(height: 22),
         FTButton(label: 'Save Changes', onTap: _save, loading: _loading, icon: Icons.save_rounded),
       ],
